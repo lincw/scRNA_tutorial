@@ -1,0 +1,232 @@
+---
+title: "PBMC 3K Single-Cell RNA-seq Analysis"
+author: "Single-Cell Tutorial"
+date: "2025-04-22"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# PBMC 3K Dataset Analysis with Seurat
+
+This R Markdown document demonstrates a complete scRNA-seq analysis using the Seurat package for the PBMC 3K dataset from 10x Genomics.
+
+## Loading Required Libraries
+
+```{r load-libraries}
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+```
+
+## Data Loading
+
+First, download the PBMC 3K dataset from 10x Genomics if you haven't already:
+
+```{r eval=FALSE}
+# Optional - run this if you need to download the data
+download.file("https://cf.10xgenomics.com/samples/cell/pbmc3k/pbmc3k_filtered_gene_bc_matrices.tar.gz", 
+              destfile = "../data/pbmc3k_filtered_gene_bc_matrices.tar.gz")
+untar("../data/pbmc3k_filtered_gene_bc_matrices.tar.gz", exdir = "../data/")
+```
+
+Now let's load the data:
+
+```{r load-data}
+# Load the dataset
+pbmc.data <- Read10X(data.dir = "../data/filtered_gene_bc_matrices/hg19/")
+
+# Initialize the Seurat object with the raw data
+pbmc <- CreateSeuratObject(counts = pbmc.data, project = "pbmc3k", min.cells = 3, min.features = 200)
+pbmc
+```
+
+## Quality Control
+
+Calculate quality control metrics:
+
+```{r qc-metrics}
+# Calculate the percentage of mitochondrial genes
+pbmc[["percent.mt"]] <- PercentageFeatureSet(pbmc, pattern = "^MT-")
+
+# Show QC metrics for the first few cells
+head(pbmc@meta.data)
+
+# Visualize QC metrics as violin plots
+VlnPlot(pbmc, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+# Show correlation between metrics
+plot1 <- FeatureScatter(pbmc, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(pbmc, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 + plot2
+```
+
+Filter cells based on QC metrics:
+
+```{r filter-cells}
+# Filter cells with high mitochondrial content and outlier feature counts
+pbmc <- subset(pbmc, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+pbmc
+```
+
+## Normalization and Feature Selection
+
+```{r normalize}
+# Normalize the data
+pbmc <- NormalizeData(pbmc, normalization.method = "LogNormalize", scale.factor = 10000)
+
+# Identify highly variable features (genes)
+pbmc <- FindVariableFeatures(pbmc, selection.method = "vst", nfeatures = 2000)
+
+# Identify the top 10 most variable genes
+top10 <- head(VariableFeatures(pbmc), 10)
+
+# Plot variable features
+var_plot <- VariableFeaturePlot(pbmc)
+LabelPoints(plot = var_plot, points = top10, repel = TRUE)
+```
+
+## Scaling and PCA
+
+```{r scaling-pca}
+# Scale the data - all genes
+all.genes <- rownames(pbmc)
+pbmc <- ScaleData(pbmc, features = all.genes)
+
+# Run PCA
+pbmc <- RunPCA(pbmc, features = VariableFeatures(object = pbmc))
+
+# Visualize PCA results
+print(pbmc[["pca"]], dims = 1:5, nfeatures = 5)
+VizDimLoadings(pbmc, dims = 1:2, reduction = "pca")
+DimPlot(pbmc, reduction = "pca")
+```
+
+Examine the principal components:
+
+```{r examine-pcs}
+DimHeatmap(pbmc, dims = 1:6, cells = 500, balanced = TRUE)
+
+# Determine how many PCs to use
+ElbowPlot(pbmc)
+```
+
+## Clustering
+
+```{r clustering}
+# Determine neighbors and clusters
+pbmc <- FindNeighbors(pbmc, dims = 1:10)
+pbmc <- FindClusters(pbmc, resolution = 0.5)
+
+# Look at cluster IDs of the first 5 cells
+head(Idents(pbmc), 5)
+```
+
+## Dimensionality Reduction for Visualization
+
+```{r umap}
+# Run UMAP
+pbmc <- RunUMAP(pbmc, dims = 1:10)
+
+# Plot UMAP
+DimPlot(pbmc, reduction = "umap", label = TRUE)
+```
+
+## Finding Marker Genes
+
+```{r markers}
+# Find markers for every cluster compared to all remaining cells
+pbmc.markers <- FindAllMarkers(pbmc, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+
+# View the top 5 markers per cluster
+top5 <- pbmc.markers %>%
+  group_by(cluster) %>%
+  slice_max(n = 5, order_by = avg_log2FC)
+
+top5
+```
+
+Visualize marker expression:
+
+```{r viz-markers}
+# Plot expression of key marker genes
+markers_to_plot <- c("CD3D", "CD3E", "MS4A1", "CD79A", "LYZ", "GNLY")
+FeaturePlot(pbmc, features = markers_to_plot, ncol = 3)
+VlnPlot(pbmc, features = c("CD3D", "LYZ"), ncol = 2)
+```
+
+## Cell Type Annotation
+
+Based on the marker genes, we can annotate the cell types:
+
+```{r annotation}
+# Create a named vector to map cluster IDs to cell type names
+cell_type_names <- c(
+  "0" = "CD4+ T cells",
+  "1" = "CD14+ Monocytes",
+  "2" = "B cells",
+  "3" = "CD8+ T cells",
+  "4" = "NK cells",
+  "5" = "FCGR3A+ Monocytes",
+  "6" = "Dendritic cells",
+  "7" = "Platelets"
+)
+
+# Rename the clusters
+new.cluster.ids <- cell_type_names[as.character(levels(pbmc))]
+names(new.cluster.ids) <- levels(pbmc)
+pbmc <- RenameIdents(pbmc, new.cluster.ids)
+
+# Plot UMAP with cell type annotations
+DimPlot(pbmc, reduction = "umap", label = TRUE, pt.size = 0.5) + 
+  labs(title = "PBMC Cell Types")
+```
+
+## Save Results
+
+```{r save}
+# Save the Seurat object to disk
+saveRDS(pbmc, file = "../data/pbmc3k_final.rds")
+
+# Export metadata including cell types
+metadata <- pbmc@meta.data
+metadata$cell_type <- Idents(pbmc)
+write.csv(metadata, file = "../data/pbmc3k_metadata.csv")
+```
+
+## Create a Publication-Ready Plot
+
+```{r final-plot}
+# Create a customized UMAP plot for publication
+custom_colors <- c("CD4+ T cells" = "#F8766D", 
+                   "CD14+ Monocytes" = "#7CAE00", 
+                   "B cells" = "#00BFC4", 
+                   "CD8+ T cells" = "#C77CFF",
+                   "NK cells" = "#FF61CC", 
+                   "FCGR3A+ Monocytes" = "#CD9600",
+                   "Dendritic cells" = "#00A9FF",
+                   "Platelets" = "#FF6E1B")
+
+DimPlot(pbmc, reduction = "umap", label = TRUE, pt.size = 0.7,
+        cols = custom_colors, label.size = 5) +
+  labs(title = "PBMC Cell Types") +
+  theme(legend.position = "right",
+        plot.title = element_text(size = 20, face = "bold"),
+        axis.text = element_text(size = 12),
+        axis.title = element_text(size = 14))
+
+ggsave("../data/pbmc3k_umap.png", width = 10, height = 8, dpi = 300)
+```
+
+## Session Info
+
+```{r session-info}
+sessionInfo()
+```

@@ -43,17 +43,43 @@ plot_cells(cds, color_cells_by = 'pseudotime')
 ```
 
 ### Python (Scanpy + scVelo)
+
+> **Important Note:** RNA velocity analysis requires both spliced and unspliced counts, which are **not available** in standard 10X Genomics output. You must use special preprocessing tools like `velocyto` or CellRanger with `--include-introns` flag to generate the necessary data.
+
+**Step 1: Generate spliced/unspliced counts (prerequisite):**
+```bash
+# Option 1: Using velocyto CLI tool
+velocyto run10x -m repeat_mito_filter.gtf /path/to/cellranger/output reference.gtf
+
+# Option 2: During CellRanger processing (version 7.0+)
+cellranger count --include-introns ... (other parameters)
+```
+
+**Step 2: RNA velocity analysis:**
 ```python
 import scanpy as sc
 import scvelo as scv
-# Preprocess and compute moments
-sc.pp.filter_and_normalize(adata)
-sc.pp.pca(adata)
-scv.pp.moments(adata)
-# RNA velocity and latent time
-scv.tl.velocity(adata)
-scv.tl.velocity_graph(adata)
+
+# Load data with spliced/unspliced counts
+adata = scv.read('./path/to/loom_file.loom')
+# or for newer CellRanger output:
+# adata = sc.read_10x_mtx('path/to/cellranger/output', include_introns=True)
+
+# Basic filtering and processing
+scv.pp.filter_and_normalize(adata, min_shared_counts=20, n_top_genes=2000)
+
+# Compute moments for velocity estimation
+scv.pp.moments(adata, n_pcs=30, n_neighbors=30)
+
+# RNA velocity analysis
 scv.tl.recover_dynamics(adata)
+scv.tl.velocity(adata, mode='dynamical')
+scv.tl.velocity_graph(adata)
+
+# Project velocity to low-dimensional embeddings
+scv.tl.velocity_embedding(adata, basis='umap')
+
+# Compute and visualize latent time
 scv.tl.latent_time(adata)
 scv.pl.scatter(adata, color='latent_time', cmap='viridis')
 ```

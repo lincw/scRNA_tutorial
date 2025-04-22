@@ -4,7 +4,7 @@ Welcome to the world of single-cell transcriptomics! This guide is designed for 
 
 ---
 
-> **Note:** This tutorial was prepared in cooperation with GPT-4.1 and o4-mini-high. Last updated: 2025-04-22.
+> **Note:** This tutorial was prepared in cooperation with GPT-4.1, o4-mini-high, and Claude 3.7 Sonnet. Last updated: 2025-04-22.
 
 ---
 
@@ -29,3 +29,17 @@ Welcome to the world of single-cell transcriptomics! This guide is designed for 
 ---
 
 Each topic is in its own file for easy editing and expansion. Click on any section above to get started!
+
+## Key Features and Best Practices
+
+This tutorial emphasizes rigorous analytical approaches and best practices for scRNA-seq data analysis:
+
+- **Comprehensive Quality Control**: Including doublet detection with tools like DoubletFinder and Scrublet
+- **Modern Normalization Methods**: SCTransform and scran pooling-based normalization alongside traditional approaches
+- **Batch Effect Correction**: Clear guidance on correct workflow ordering for batch integration
+- **Multi-resolution Clustering**: Testing different resolutions to find optimal cell type granularity
+- **Robust Cell Type Annotation**: Using multiple markers and orthogonal validation methods
+- **Trajectory Analysis**: Detailed prerequisites and proper workflows for RNA velocity analysis
+- **Protein Interaction Network Integration**: Advanced methods for incorporating PPI data into cell communication analysis
+
+These advanced approaches will help ensure more reliable and reproducible results from your scRNA-seq analysis.
